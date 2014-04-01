@@ -7,7 +7,7 @@ var options = {
   partial: true
 };
 
-// test();
+test();
 
 function test() {
   var ops = {
@@ -65,7 +65,6 @@ function NFAFragment() {
 }
 
 function buildNFA(pattern, options) {
-  // debugger;
   var context = {
     machine: null,
     last_state: null,
@@ -96,17 +95,18 @@ function buildNFA(pattern, options) {
     switch(char) {
       case '*':
       {
-        var state = NFAFragment();
-        state.label = context.last_state.label;
-        state.next[ state.label ] = state;
         context.last_state.transparent = true;
-        context.last_state.next[ state.label ] = state;
-        context.last_state = state;
+        context.last_state.next[ context.last_state.label ] = context.last_state;
       }
       break;
       case '+':
       {
-        context.last_state.next[ context.last_state.label ] = context.last_state;
+        var state = NFAFragment();
+        state.label = context.last_state.label;
+        state.next[ state.label ] = state;
+        state.transparent = true;
+        context.last_state.next[ context.last_state.label ] = state;
+        context.last_state = state;
       }
       break;
       case '?':
@@ -138,8 +138,12 @@ function runNFA(text, machine, options) {
 
   while (text_cur <= text.length - 1) {
     if(!current_state) {
-      if(machine.label === text[text_cur]) {
-        current_state = machine;
+      var match_result = match_label(machine, text[text_cur]);
+      var match_result2 = machine.transparent ? match_subs(machine, text[text_cur]) : false;
+      if (!!match_result ) {
+        current_state = match_result;
+      } else if(!!match_result2) {
+        current_state = match_result2;
       }
       text_cur++;
       continue;
@@ -148,23 +152,11 @@ function runNFA(text, machine, options) {
     if (is_finnal(current_state)) {
       return true;
     }
-    var match_result = match_labels(current_state, text[text_cur]);
+    var match_result = match_subs(current_state, text[text_cur]);
     if (!!match_result) {
       current_state = match_result;
       text_cur++;
       continue;
-    } else if (!!current_state.transparent) {
-      var next_result = match_transparent_labels(current_state, text[text_cur]);
-      if (!!next_result) {
-        current_state = next_result;
-        text_cur++;
-        continue;
-      } else {
-        if (options && options.partial) {
-          current_state = null;
-          continue;
-        }
-      }
     } else {
       if (options && options.partial) {
         current_state = null;
@@ -179,29 +171,26 @@ function runNFA(text, machine, options) {
     return false;
   }
 
-  function match_labels(state, char) {
+  function match_subs(state, char) {
     for (var key in state.next) {
       if(char === key) {
         return state.next[key];
       }
-      if (state.next[key].transparent) {
-        var next_result = match_transparent_labels(state.next[key], char);
-        if (!!next_result) {
-          return next_result;
+      if (state.next[key] === state) {
+        continue;
+      }
+      if(state.transparent) {
+        var result = match_subs(state.next[key], char);
+        if (!!result) {
+          return result;
         }
       }
     }
     return false;
   }
 
-  function match_transparent_labels(state, char) {
-    for (var key in state.next) {
-      var result = match_labels(state.next[key], char);
-      if(!!result) {
-        return result;
-      }
-    }
-    return false;
+  function match_label(state, char) {
+    return state.label === char && state;
   }
 
   function is_finnal(state) {
@@ -211,14 +200,15 @@ function runNFA(text, machine, options) {
 
     if (!!state.transparent) {
       for(var key in state.next) {
-        if (is_finnal(state.next[key])) {
+        if (state.next[key] !== state && is_finnal(state.next[key])) {
           return true;
         }
       }
     }
 
     for(var key in state.next) {
-      if (state.next[key].transparent && is_finnal(state.next[key])) {
+      var st = state.next[key];
+      if (st !== state && st.transparent && is_finnal(st)) {
         return true;
       }
     }
