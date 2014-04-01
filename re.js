@@ -97,6 +97,17 @@ function buildNFA(pattern, options) {
     var pi = context.pattern_index;
     
     switch(char) {
+      case '.':
+      {
+        var state = NFAFragment();
+        state.label = '.';
+        if (!context.machine) {
+          context.machine = context.last_state = state;
+          return;
+        }
+        context.last_state = state;
+      }
+      break;
       case '*':
       {
         context.last_state.transparent = true;
@@ -197,7 +208,7 @@ function runNFA(text, machine, options) {
   }
 
   function match_label(state, char) {
-    return state.label === char && state;
+    return (state.label === char || state.label === '.') && state;
   }
 
   function is_finnal(state) {
