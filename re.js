@@ -48,6 +48,10 @@ function test() {
   expect(runNFA('a', buildNFA('ab?', ops), ops)).to.equal(true);
   expect(runNFA('ab', buildNFA('ab?', ops), ops)).to.equal(true);
   expect(runNFA('abb', buildNFA('ab?', ops), ops)).to.equal(true);
+
+  expect(runNFA('bcdd', buildNFA('b?a*c+dd+', ops), ops)).to.equal(true);
+  expect(runNFA('accdddd', buildNFA('b?a*c+dd+', ops), ops)).to.equal(true);
+  expect(runNFA('ccdddd', buildNFA('b?a*c+dd+', ops), ops)).to.equal(true);
 }
 
 function testRegExp(reg, text, options) {
@@ -101,12 +105,15 @@ function buildNFA(pattern, options) {
       break;
       case '+':
       {
+        // e+ -> ee*
         var state = NFAFragment();
         state.label = context.last_state.label;
-        state.next[ state.label ] = state;
-        state.transparent = true;
-        context.last_state.next[ context.last_state.label ] = state;
-        context.last_state = state;
+        var next_state = NFAFragment();
+        next_state.label = state.label;
+        next_state.transparent = true;
+        next_state.next[next_state.label] = next_state;
+        state.next[state.label] = next_state;
+        context.last_state = next_state;
       }
       break;
       case '?':
