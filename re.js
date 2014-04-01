@@ -47,9 +47,7 @@ function buildNFA(pattern, options) {
     return is_in_string(target, basic_meta);
   }
 
-  function proc_basic_meta (context, char) {
-    var pi = context.pattern_index;
-    
+  function proc_basic_meta (context, char) {    
     switch(char) {
       case '.':
       (function(){
@@ -60,6 +58,13 @@ function buildNFA(pattern, options) {
           return;
         }
         context.last_state = state;
+      })();
+      break;
+      case '\\':
+      (function(){
+        context.pattern_index++;
+        var next_char = context.pattern[context.pattern_index];
+        proc_normal_char(context, next_char);
       })();
       break;
       case '*':
