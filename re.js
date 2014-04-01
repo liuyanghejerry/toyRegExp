@@ -1,71 +1,141 @@
 var logger = require('tracer').console();
+var expect = require('chai').expect;
 
 var pattern = process.argv[2];
 var text = process.argv[3];
-// logger.log(pattern, text);
+var options = {
+  partial: true
+};
 
-var machine = buildNFA(pattern);
-logger.log(machine, runNFA(text, machine));
+// test();
+
+function test() {
+  var ops = {
+    partial: true
+  };
+
+  expect(runNFA('a', buildNFA('a', ops), ops)).to.equal(true);
+  expect(runNFA('b', buildNFA('a', ops), ops)).to.equal(false);
+  expect(runNFA('ab', buildNFA('ab', ops), ops)).to.equal(true);
+  expect(runNFA('abccc', buildNFA('ab', ops), ops)).to.equal(true);
+  expect(runNFA('abccc', buildNFA('c', ops), ops)).to.equal(true);
+  expect(runNFA('asd', buildNFA('c', ops), ops)).to.equal(false);
+  expect(runNFA('abcabc', buildNFA('abc', ops), ops)).to.equal(true);
+  expect(runNFA('abdabc', buildNFA('abc', ops), ops)).to.equal(true);
+
+  expect(runNFA('abbabc', buildNFA('ab*abc', ops), ops)).to.equal(true);
+  expect(runNFA('ababc', buildNFA('ab*abc', ops), ops)).to.equal(true);
+  expect(runNFA('abdabc', buildNFA('ab*abc', ops), ops)).to.equal(false);
+  expect(runNFA('a', buildNFA('a*', ops), ops)).to.equal(true);
+  expect(runNFA('aaaa', buildNFA('a*', ops), ops)).to.equal(true);
+  expect(runNFA('av', buildNFA('a*', ops), ops)).to.equal(true);
+  expect(runNFA('v', buildNFA('a*', ops), ops)).to.equal(true);
+
+  expect(runNFA('av', buildNFA('a+', ops), ops)).to.equal(true);
+  expect(runNFA('a', buildNFA('a+', ops), ops)).to.equal(true);
+  expect(runNFA('aa', buildNFA('a+', ops), ops)).to.equal(true);
+  expect(runNFA('aab', buildNFA('a+', ops), ops)).to.equal(true);
+  expect(runNFA('bb', buildNFA('ba+b', ops), ops)).to.equal(false);
+  expect(runNFA('bab', buildNFA('ba+b', ops), ops)).to.equal(true);
+  expect(runNFA('baaab', buildNFA('ba+b', ops), ops)).to.equal(true);
+
+  expect(runNFA('aabc', buildNFA('a+b*c', ops), ops)).to.equal(true);
+  expect(runNFA('aac', buildNFA('a+b*c', ops), ops)).to.equal(true);
+  expect(runNFA('abc', buildNFA('a+b*c', ops), ops)).to.equal(true);
+  expect(runNFA('bc', buildNFA('a+b*c', ops), ops)).to.equal(false);
+
+  expect(runNFA('a', buildNFA('a?', ops), ops)).to.equal(true);
+  expect(runNFA('a', buildNFA('ab?', ops), ops)).to.equal(true);
+  expect(runNFA('ab', buildNFA('ab?', ops), ops)).to.equal(true);
+  expect(runNFA('abb', buildNFA('ab?', ops), ops)).to.equal(true);
+}
+
+function testRegExp(reg, text, options) {
+  return runNFA(text, buildNFA(reg, options), options);
+}
+
 
 function NFAFragment() {
   return {
     label: null,
-    next: {}
+    next: {},
+    isFin: false,
+    transparent: false
   };
 }
 
-function buildNFA(pattern) {
+function buildNFA(pattern, options) {
+  // debugger;
   var context = {
     machine: null,
     last_state: null,
-    pattern: pattern
+    pattern: pattern,
+    pattern_index: 0
   };
 
-  for (var i = 0; i < context.pattern.length; i++) {
-    if( is_basic_meta(context.pattern[i]) ) {
-      proc_basic_meta(context, context.pattern[i]);
+  for (context.pattern_index = 0; context.pattern_index < context.pattern.length; context.pattern_index++) {
+    if( is_basic_meta(context.pattern[context.pattern_index]) ) {
+      proc_basic_meta(context, context.pattern[context.pattern_index]);
       continue;
     }
-    proc_normal_char(context, context.pattern[i]);
+    proc_normal_char(context, context.pattern[context.pattern_index]);
   }
+  context.last_state.isFin = true;
 
   return context.machine;
 
 
   function is_basic_meta (target) {
-    var basic_meta = '?+*|().\\';
+    var basic_meta = '?+*|.\\';
     return is_in_string(target, basic_meta);
   }
 
   function proc_basic_meta (context, char) {
-    // body...
+    var pi = context.pattern_index;
+    
+    switch(char) {
+      case '*':
+      {
+        var state = NFAFragment();
+        state.label = context.last_state.label;
+        state.next[ state.label ] = state;
+        context.last_state.transparent = true;
+        context.last_state.next[ state.label ] = state;
+        context.last_state = state;
+      }
+      break;
+      case '+':
+      {
+        context.last_state.next[ context.last_state.label ] = context.last_state;
+      }
+      break;
+      case '?':
+      {
+        context.last_state.transparent = true;
+      }
+      break;
+    }
   }
 
   function proc_normal_char (context, char) {
     var state = NFAFragment();
     state.label = char;
     if (!context.machine) {
-      context.last_state = context.machine = state;
+      context.machine = context.last_state = state;
       return;
     }
 
     context.last_state = context.last_state.next[ char ] = state;
   }
-
-  function is_in_string(target, string) {
-    for (var i = 0; i < string.length; i++) {
-      if(string[i] === target) {
-        return true;
-      }
-    }
-    return false;
-  }
 }
 
-function runNFA(text, machine) {
-  // debugger;
+function runNFA(text, machine, options) {
   var text_cur = 0;
   var current_state = null;
+  if (is_empty_machine(machine)) {
+    return true;
+  }
+
   while (text_cur <= text.length - 1) {
     if(!current_state) {
       if(machine.label === text[text_cur]) {
@@ -75,22 +145,35 @@ function runNFA(text, machine) {
       continue;
     }
     // FIN
-    if (isEmpty(current_state.next)) {
+    if (is_finnal(current_state)) {
       return true;
     }
     var match_result = match_labels(current_state, text[text_cur]);
     if (!!match_result) {
-      current_state = current_state.next[match_result];
+      current_state = match_result;
       text_cur++;
       continue;
+    } else if (!!current_state.transparent) {
+      var next_result = match_transparent_labels(current_state, text[text_cur]);
+      if (!!next_result) {
+        current_state = next_result;
+        text_cur++;
+        continue;
+      } else {
+        if (options && options.partial) {
+          current_state = null;
+          continue;
+        }
+      }
     } else {
-      current_state = null;
-      // text_cur--;
-      continue;
+      if (options && options.partial) {
+        current_state = null;
+        continue;
+      }
     }
   }
 
-  if (!!current_state && isEmpty(current_state.next)) {
+  if (!!current_state && is_finnal(current_state)) {
     return true;
   } else {
     return false;
@@ -99,14 +182,62 @@ function runNFA(text, machine) {
   function match_labels(state, char) {
     for (var key in state.next) {
       if(char === key) {
-        return key;
+        return state.next[key];
+      }
+      if (state.next[key].transparent) {
+        var next_result = match_transparent_labels(state.next[key], char);
+        if (!!next_result) {
+          return next_result;
+        }
+      }
+    }
+    return false;
+  }
+
+  function match_transparent_labels(state, char) {
+    for (var key in state.next) {
+      var result = match_labels(state.next[key], char);
+      if(!!result) {
+        return result;
+      }
+    }
+    return false;
+  }
+
+  function is_finnal(state) {
+    if (state.isFin || is_empty(state.next)) {
+      return true;
+    }
+
+    if (!!state.transparent) {
+      for(var key in state.next) {
+        if (is_finnal(state.next[key])) {
+          return true;
+        }
+      }
+    }
+
+    for(var key in state.next) {
+      if (state.next[key].transparent && is_finnal(state.next[key])) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function is_empty_machine(machine) {
+    if (machine.transparent) {
+      for(var key in machine.next) {
+        if (is_finnal(machine.next[key])) {
+          return true;
+        }
       }
     }
     return false;
   }
 }
 
-function isEmpty(obj) {
+function is_empty(obj) {
 
     // null and undefined are "empty"
     if (obj == null) return true;
@@ -126,78 +257,31 @@ function isEmpty(obj) {
     return true;
 }
 
-// function buildNFA(pattern) {
-//   var machine = null;
-//   var context = {
-//     cursor: 0,
-//     queue: []
-//   };
-//   while(context.cursor < pattern.length) {
-//     // handle basic meta
-//     if (is_basic_meta(pattern[context.cursor])) {
-//       process_basic_meta(pattern[context.cursor], context);
-//     }
+function is_in_string(target, string) {
+  for (var i = 0; i < string.length; i++) {
+    if(string[i] === target) {
+      return true;
+    }
+  }
+  return false;
+}
 
-//     process_normal(pattern[context.cursor], context);
-//   }
+function printNFA(machine, level) {
+  level = level || 0;
+  var line = '';
+  for (var i = 0; i < level; i++) {
+    line += '\t';
+  }
+  line += machine.label;
+  console.log(line);
+  for(var key in machine.next) {
+    if (!machine.next.hasOwnProperty(key)) {
+      continue;
+    }
+    printNFA(machine.next[key], level+1);
+  }
+}
 
-//   return context;
-
-//   function process_normal(target, context) {
-//     var step = function (char) {
-//       return target === char;
-//     }
-//     context.queue.push(step);
-//     context.cursor++;
-//   }
-
-//   function process_basic_meta() {
-//     context.cursor++;
-//   }
-
-//   function is_basic_meta (target) {
-//     var basic_meta = '*|().\\';
-//     return is_in_string(target, basic_meta);
-//   }
-
-//   // // meta only appear in []
-//   // function is_square_meta (target) {
-//   //   var meta = '-';
-//   //   return is_in_string(target, meta);
-//   // }
-
-//   // // meta only appear in {}
-//   // function is_brace_meta (target) {
-//   //   var meta = ',';
-//   //   return is_in_string(target, meta);
-//   // }
-
-//   function is_in_string(target, string) {
-//     for (var i = 0; i < string.length; i++) {
-//       if(string[i] === target) {
-//         return true;
-//       }
-//     }
-//     return false;
-//   }
-  
-// }
-
-// function runNFA(machine, text) {
-//   var j = 0;
-//   var i = 0;
-//   while (j <= machine.queue.length - 1 && i <= text.length -1) {
-//     logger.log(j, i);
-//     if(!machine.queue[j](text[i])) {
-//       if (i === 0) {
-//         j = 0;
-//         continue;
-//       }
-//       return false;
-//     }
-//     i++;
-//     j++;
-//   }
-
-//   return true;
-// }
+module.exports = {
+  test: testRegExp
+};

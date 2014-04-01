@@ -4,6 +4,7 @@
   "description": "",
   "main": "re.js",
   "dependencies": {
+    "chai": "^1.9.1",
     "tracer": "~0.7.1"
   },
   "devDependencies": {},
