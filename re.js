@@ -52,7 +52,7 @@ function buildNFA(pattern, options) {
     
     switch(char) {
       case '.':
-      {
+      (function(){
         var state = NFAFragment();
         state.label = '.';
         if (!context.machine) {
@@ -60,7 +60,7 @@ function buildNFA(pattern, options) {
           return;
         }
         context.last_state = state;
-      }
+      })();
       break;
       case '*':
       {
@@ -69,7 +69,7 @@ function buildNFA(pattern, options) {
       }
       break;
       case '+':
-      {
+      (function(){
         // e+ -> ee*
         var state = NFAFragment();
         state.label = context.last_state.label;
@@ -79,7 +79,7 @@ function buildNFA(pattern, options) {
         next_state.next[next_state.label] = next_state;
         state.next[state.label] = next_state;
         context.last_state = next_state;
-      }
+      })();
       break;
       case '?':
       {
@@ -104,14 +104,16 @@ function buildNFA(pattern, options) {
 function runNFA(text, machine, options) {
   var text_cur = 0;
   var current_state = null;
+  var match_result = null;
+  var match_result2 = null;
   if (is_empty_machine(machine)) {
     return true;
   }
 
   while (text_cur <= text.length - 1) {
     if(!current_state) {
-      var match_result = match_label(machine, text[text_cur]);
-      var match_result2 = machine.transparent ? match_subs(machine, text[text_cur]) : false;
+      match_result = match_label(machine, text[text_cur]);
+      match_result2 = machine.transparent ? match_subs(machine, text[text_cur]) : false;
       if (!!match_result ) {
         current_state = match_result;
       } else if(!!match_result2) {
@@ -124,7 +126,7 @@ function runNFA(text, machine, options) {
     if (is_finnal(current_state)) {
       return true;
     }
-    var match_result = match_subs(current_state, text[text_cur]);
+    match_result = match_subs(current_state, text[text_cur]);
     if (!!match_result) {
       current_state = match_result;
       text_cur++;
